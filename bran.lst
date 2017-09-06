@@ -1,0 +1,880 @@
+ca65 V2.9.2 - (C) Copyright 1998-2000 Ullrich von Bassewitz
+Main file   : bran.asm
+Current file: bran.asm
+
+000000r 1               ;----------------------------------------------
+000000r 1               ;BRAN
+000000r 1               ; ROM switching software Branquar 2012
+000000r 1               ;----------------------------------------------
+000000r 1               	.DEFINE asm_code $b010
+000000r 1               	.DEFINE header   0		; Header Wouter Ras emulator
+000000r 1               	.DEFINE filenaam "BRAN"
+000000r 1               
+000000r 1               .org asm_code-22*header
+00B010  1               
+00B010  1               .IF header
+00B010  1               ;********************************************************************
+00B010  1               ; ATM Header for Atom emulator Wouter Ras
+00B010  1               
+00B010  1               name_start:
+00B010  1               	.byte filenaam			; Filename
+00B010  1               name_end:
+00B010  1               	.repeat 16-name_end+name_start	; Fill with 0 till 16 chars
+00B010  1               	  .byte $0
+00B010  1               	.endrep
+00B010  1               
+00B010  1               	.word asm_code			; 2 bytes startaddress
+00B010  1               	.word exec			; 2 bytes linkaddress
+00B010  1               	.word eind_asm-start_asm	; 2 bytes filelength
+00B010  1               
+00B010  1               ;********************************************************************
+00B010  1               .ENDIF
+00B010  1               
+00B010  1               
+00B010  1               exec:
+00B010  1               start_asm:
+00B010  1               	.include "BRAN.inc"
+00B010  1               eind_asm:
+00B010  2               ;
+00B010  2               ; **** Note **** to use this code you need to patch the floating point rom 
+00B010  2               ;
+00B010  2               ;=============================
+00B010  2               ;Floating Point Patch (#Dxxx):
+00B010  2               ;=============================
+00B010  2               ;
+00B010  2               ;Original                     Patch
+00B010  2               ;-------------------------    -------------------------
+00B010  2               ;D4AF: Ad 04 E0  LDA #E004    D4AF: AD 20 EB  LDA #EB20
+00B010  2               ;D4B2: C9 BF     CMP @#BF     D4B2: C9 40     CMP @#40
+00B010  2               ;D4B4: F0 0A     BEQ #D4C0    D4B4: F0 0A     BEQ #D4C0
+00B010  2               ;D4B6: AD 00 A0  LDA #A000    D4B6: AD 01 A0  LDA #A001
+00B010  2               ;D4B9: C9 40     CMP @#40     D4B9: C9 BF     CMP @#BF
+00B010  2               ;D4BB: D0 83     BNE #D440    D4BB: D0 83     BNE #D440
+00B010  2               ;D4BD: 4C 01 A0  JMP #A002    D4BD: 4C 02 A0  JMP #A002
+00B010  2               ;D4C0: 4C 05 E0  JMP #E005    D4C3: 4C 22 EB  JMP #EB22
+00B010  2               
+00B010  2               
+00B010  2               ; *** Options ***
+00B010  2               
+00B010  2               LATCH		= $BFFF
+00B010  2               SHADOW 		= $FD			; If $BFFF is write only otherwise SHADOW =$BFFF
+00B010  2               MAX		= $10
+00B010  2               ZPBASE		= $90
+00B010  2               ZPLENGTH	= $10
+00B010  2               
+00B010  2               ; *** Workarea ***
+00B010  2               
+00B010  2               BASE		= $400
+00B010  2               BRKLOW		= BASE
+00B010  2               BRKHIGH		= BRKLOW+1
+00B010  2               BRKROM		= BRKHIGH+1
+00B010  2               STARTROM	= BRKROM+1
+00B010  2               TEMP		= STARTROM+1
+00B010  2               VECTOR		= TEMP
+00B010  2               DUMP		= TEMP+1
+00B010  2               VECT		= MAX*ZPLENGTH
+00B010  2               VECTAB		= VECT+DUMP+1 
+00B010  2               SUB_ACCU	= VECTAB+1+15*3
+00B010  2               SUB_STATUS	= SUB_ACCU+1
+00B010  2               SUB_Y		= SUB_STATUS+1
+00B010  2               SUB_X		= SUB_Y+1
+00B010  2               STACKPOINTER	= SUB_X
+00B010  2               SUBVECTOR	= SUB_X+1
+00B010  2               INTVECTOR	= SUBVECTOR+2
+00B010  2               INT_ACCU	= INTVECTOR+2
+00B010  2               INT_STATUS1	= INT_ACCU+1
+00B010  2               INT_STATUS2	= INT_STATUS1+1
+00B010  2               INT_X		= INT_STATUS2+1
+00B010  2               INT_Y		= INT_X+1
+00B010  2               OPT_PCHARME	= INT_Y+1
+00B010  2               FREE		= OPT_PCHARME+1
+00B010  2               
+00B010  2               ; *** Constants ***
+00B010  2               
+00B010  2               BRKVEC		= $202
+00B010  2               TEXT		= $F7D1
+00B010  2               CR		= $D
+00B010  2               LF		= $A
+00B010  2               DELIM		= $EA
+00B010  2               
+00B010  2               ;.SEGMENT "BRAN"
+00B010  2               
+00B010  2               ; *** Start of assembly ***
+00B010  2               
+00B010  2  40 BF        	.BYTE $40,$bf			; ROM entry
+00B012  2               
+00B012  2               ; *** Entry in system ***
+00B012  2               
+00B012  2               ENTRY:
+00B012  2  A5 06        	LDA 6				; Test directmode
+00B014  2  C9 01        	CMP #1
+00B016  2  D0 10        	BNE LABEL8
+00B018  2               
+00B018  2  2C 01 B0     	BIT $B001			; Test SHIFT
+00B01B  2  30 0B        	BMI LABEL8
+00B01D  2               
+00B01D  2  A2 00        	LDX #0				; Test RETURN
+00B01F  2  A1 05        	LDA (5,X)
+00B021  2  C9 0D        	CMP #CR
+00B023  2  D0 03        	BNE LABEL8
+00B025  2               
+00B025  2  4C 63 B4     	JMP UNLOCK+3			; If SHIFT-RETURN, unlock ROMs
+00B028  2               
+00B028  2               LABEL8:
+00B028  2  24 FD        	BIT SHADOW			; ROM locked?
+00B02A  2  50 03        	BVC NOT_LOCKED
+00B02C  2  4C 75 B1     	JMP LOCKED
+00B02F  2               
+00B02F  2               ; *** Not locked search ***
+00B02F  2               
+00B02F  2               NOT_LOCKED:
+00B02F  2  A5 FD        	LDA SHADOW 			; Save current ROM nr
+00B031  2  8D 03 04     	STA STARTROM
+00B034  2  20 7F B4     	JSR UPDATE_VECTORS		; Save current vectors
+00B037  2  20 3D B1     	JSR SWITCH_CONTEXT_OUT		; Store zeropage
+00B03A  2               
+00B03A  2  AD 03 02     	LDA BRKVEC+1			; Check if breakvector is changed
+00B03D  2  C9 B0        	CMP #>HANDLER
+00B03F  2  F0 0E        	BEQ LABEL1			; If not, change it
+00B041  2  8D 01 04     	STA BRKHIGH
+00B044  2  AD 02 02     	LDA BRKVEC
+00B047  2  8D 00 04     	STA BRKLOW
+00B04A  2               
+00B04A  2  A5 FD        	LDA SHADOW 			; Save lastrom
+00B04C  2  8D 02 04     	STA BRKROM
+00B04F  2               LABEL1:
+00B04F  2  4C 71 B0     	JMP SWITCH
+00B052  2               
+00B052  2               ; ***  Try next box ***
+00B052  2               
+00B052  2               NEXT_BOX:
+00B052  2  E6 FD        	INC SHADOW			; Switch to next ROM
+00B054  2  A5 FD        	LDA SHADOW 
+00B056  2  8D FF BF     	STA LATCH
+00B059  2               
+00B059  2  C9 10        	CMP #MAX			; If last reached, switch to ROM 0
+00B05B  2  D0 07        	BNE LABEL2
+00B05D  2  A9 00        	LDA #0
+00B05F  2  85 FD        	STA SHADOW 
+00B061  2  8D FF BF     	STA LATCH
+00B064  2               LABEL2:
+00B064  2  20 59 B1     	JSR SWITCH_CONTEXT_IN		; Restore zeropage
+00B067  2               
+00B067  2  A5 FD        	LDA SHADOW 			; Check if all ROMs entered
+00B069  2  CD 03 04     	CMP STARTROM
+00B06C  2  D0 03        	BNE SWITCH
+00B06E  2  4C A8 B1     	JMP NOT_FOUND			; Command not found in ROMs, try table
+00B071  2               
+00B071  2               ; *** Replace break vector and enter ROM ***
+00B071  2               
+00B071  2               SWITCH:
+00B071  2  A9 B0        	LDA #>HANDLER			; Replace breakvector
+00B073  2  8D 03 02     	STA BRKVEC+1
+00B076  2  A9 8C        	LDA #<HANDLER
+00B078  2  8D 02 02     	STA BRKVEC
+00B07B  2               
+00B07B  2  AD 00 A0     	LDA $A000			; Check if new ROM is legal
+00B07E  2  C9 40        	CMP #$40
+00B080  2  D0 D0        	BNE NEXT_BOX
+00B082  2  AD 01 A0      	LDA $A001
+00B085  2  C9 BF        	CMP #$BF
+00B087  2  D0 C9        	BNE NEXT_BOX
+00B089  2  4C 02 A0     	JMP $A002			; Is legal, enter ROM
+00B08C  2               
+00B08C  2               ; *** Central break handler ***
+00B08C  2               
+00B08C  2               HANDLER:
+00B08C  2  68           	PLA
+00B08D  2  8D 04 04     	STA TEMP			; Save high byte ERROR
+00B090  2  68           	PLA
+00B091  2  85 00        	STA 0				; Save low byte ERROR
+00B093  2               
+00B093  2  24 FD        	BIT SHADOW 			; ROM locked?
+00B095  2  50 03        	BVC NOT_LOCKED_ERROR
+00B097  2  4C 29 B1     	JMP LOCKED_ERROR
+00B09A  2               
+00B09A  2               ; *** ERROR with ROM not locked ***
+00B09A  2               
+00B09A  2               NOT_LOCKED_ERROR:
+00B09A  2  C9 5E        	CMP #94				; ERROR 94?
+00B09C  2  D0 11        	BNE NOT_ERROR_94
+00B09E  2               
+00B09E  2  A4 5E        	LDY $5E				; Check if command is abreviated
+00B0A0  2  B1 05        	LDA (5),Y
+00B0A2  2  C9 2E        	CMP #'.'
+00B0A4  2  D0 03        	BNE LABEL99
+00B0A6  2  4C A8 B1     	JMP NOT_FOUND			; Command not found in ROMs, try table
+00B0A9  2               LABEL99:
+00B0A9  2  A2 FF        	LDX #$FF			; Reset stackpointer
+00B0AB  2  9A           	TXS
+00B0AC  2  4C 52 B0     	JMP NEXT_BOX			; Check next ROM
+00B0AF  2               
+00B0AF  2               ; *** Function check ***
+00B0AF  2               
+00B0AF  2               NOT_ERROR_94:
+00B0AF  2  AD 00 04     	LDA BRKLOW			; Set breakpointer
+00B0B2  2  8D 02 02     	STA BRKVEC
+00B0B5  2  AD 01 04     	LDA BRKHIGH
+00B0B8  2  8D 03 02     	STA BRKVEC+1
+00B0BB  2               
+00B0BB  2  A5 00        	LDA 0				; Get ERROR nr
+00B0BD  2  C9 AE        	CMP #174			; ERROR 174?
+00B0BF  2  F0 04        	BEQ INSTALL
+00B0C1  2               
+00B0C1  2  C9 1D        	CMP #29				; ERROR 29?
+00B0C3  2  D0 49        	BNE NOT_INSTALL
+00B0C5  2               
+00B0C5  2               ; *** Install fake caller ***
+00B0C5  2               
+00B0C5  2               INSTALL:
+00B0C5  2  BA           	TSX				; Save stackpointer
+00B0C6  2  8E 37 05     	STX STACKPOINTER
+00B0C9  2               
+00B0C9  2  A2 FF        	LDX #$FF
+00B0CB  2               LB1:
+00B0CB  2  BD 00 01     	LDA $100,X
+00B0CE  2  EC 37 05     	CPX STACKPOINTER
+00B0D1  2  90 3B        	BCC NOT_INSTALL
+00B0D3  2  F0 39        	BEQ NOT_INSTALL
+00B0D5  2               
+00B0D5  2  CA           	DEX
+00B0D6  2  CA           	DEX
+00B0D7  2  29 F0        	AND #$F0
+00B0D9  2  C9 A0        	CMP #$A0
+00B0DB  2  F0 EE        	BEQ LB1
+00B0DD  2               
+00B0DD  2  E0 FD        	CPX #$FD			; No A-block?
+00B0DF  2  F0 2D        	BEQ NOT_INSTALL
+00B0E1  2               
+00B0E1  2  8A           	TXA
+00B0E2  2  18           	CLC
+00B0E3  2  69 03        	ADC #3
+00B0E5  2  8D 37 05     	STA STACKPOINTER
+00B0E8  2  48           	PHA
+00B0E9  2  48           	PHA
+00B0EA  2  48           	PHA
+00B0EB  2  BA           	TSX
+00B0EC  2               LB2:
+00B0EC  2  BD 03 01     	LDA $103,X
+00B0EF  2  9D 00 01     	STA $100,X
+00B0F2  2  E8           	INX
+00B0F3  2  EC 37 05     	CPX STACKPOINTER
+00B0F6  2  D0 F4        	BNE LB2
+00B0F8  2               
+00B0F8  2  AD 37 05     	LDA STACKPOINTER
+00B0FB  2  AA           	TAX
+00B0FC  2  CA           	DEX
+00B0FD  2  A5 FD        	LDA SHADOW 
+00B0FF  2  9D 00 01     	STA $100,X
+00B102  2  CA           	DEX
+00B103  2  A9 B6        	LDA #>(SWITCH_BACK-1)
+00B105  2  9D 00 01     	STA $100,X
+00B108  2  A9 8F        	LDA #<(SWITCH_BACK-1)
+00B10A  2  CA           	DEX
+00B10B  2  9D 00 01     	STA $100,X
+00B10E  2               	
+00B10E  2               NOT_INSTALL:
+00B10E  2  20 3D B1     	JSR SWITCH_CONTEXT_OUT		; Store zeropage
+00B111  2  20 7F B4     	JSR UPDATE_VECTORS		; Save vectors
+00B114  2               
+00B114  2  AD 02 04     	LDA BRKROM			; Set start ROM nr
+00B117  2  85 FD        	STA SHADOW 
+00B119  2  8D FF BF     	STA LATCH
+00B11C  2               
+00B11C  2  20 59 B1     	JSR SWITCH_CONTEXT_IN		; Restore zeropage
+00B11F  2               
+00B11F  2               ; *** Terminate search ***
+00B11F  2               
+00B11F  2  A5 00        	LDA 0				; Get LB return address
+00B121  2  48           	PHA				; Push on stack
+00B122  2  AD 04 04     	LDA TEMP			; Get HB return address
+00B125  2  48           	PHA				; Push on stack
+00B126  2  6C 02 02     	JMP (BRKVEC)			; Return
+00B129  2               
+00B129  2               ; *** ERROR with ROM locked ***
+00B129  2               
+00B129  2               LOCKED_ERROR:
+00B129  2  A5 FD        	LDA SHADOW			; Set start ROM nr
+00B12B  2  8D 02 04     	STA BRKROM
+00B12E  2               
+00B12E  2  A5 00        	LDA 0				; Get ERROR nr
+00B130  2  C9 5E        	CMP #94				; ERROR 94?
+00B132  2  F0 03        	BEQ LABEL3
+00B134  2  4C AF B0     	JMP NOT_ERROR_94
+00B137  2               
+00B137  2               LABEL3:
+00B137  2  A2 FF        	LDX #$FF			; Reset stackpointer
+00B139  2  9A           	TXS
+00B13A  2  4C A8 B1     	JMP NOT_FOUND			; Command not found in ROMs, try table
+00B13D  2               
+00B13D  2               ; *** Store zeropage (always #91-#98) ***
+00B13D  2               
+00B13D  2               SWITCH_CONTEXT_OUT:
+00B13D  2  A5 FD        	LDA SHADOW 			; Get ROM nr
+00B13F  2  29 0F        	AND #$F				; Filter to 0-15
+00B141  2  AA           	TAX
+00B142  2  E8           	INX
+00B143  2               
+00B143  2  A9 00        	LDA #0
+00B145  2               
+00B145  2               LABEL4:
+00B145  2  18           	CLC				; DUMP pointer = ROMnr * ZPLENGTH-1
+00B146  2  69 10        	ADC #ZPLENGTH
+00B148  2  CA           	DEX
+00B149  2  D0 FA        	BNE LABEL4
+00B14B  2               
+00B14B  2  A2 0F        	LDX #(ZPLENGTH-1)		; Set ZPBASE pointer
+00B14D  2  A8           	TAY
+00B14E  2  88           	DEY
+00B14F  2               	
+00B14F  2               LABEL5:
+00B14F  2  B5 90        	LDA ZPBASE,X			; Save zeropage
+00B151  2  99 05 04     	STA DUMP,Y
+00B154  2  88           	DEY
+00B155  2  CA           	DEX
+00B156  2  10 F7        	BPL LABEL5
+00B158  2  60           	RTS
+00B159  2               
+00B159  2               ; *** Restore zeropage (always #91-#98) ***
+00B159  2               
+00B159  2               SWITCH_CONTEXT_IN:
+00B159  2  A5 FD        	LDA SHADOW 			; Get ROM nr
+00B15B  2  29 0F        	AND #$F				; Filter to 0-15
+00B15D  2  AA           	TAX
+00B15E  2  E8           	INX
+00B15F  2               
+00B15F  2  A9 00        	LDA #0
+00B161  2               	
+00B161  2               LABEL6:
+00B161  2  18           	CLC				; DUMP pointer = ROMnr * ZPLENGTH-1
+00B162  2  69 10        	ADC #ZPLENGTH
+00B164  2  CA           	DEX
+00B165  2  D0 FA        	BNE LABEL6
+00B167  2               
+00B167  2  A2 0F        	LDX #(ZPLENGTH-1)		; Set ZPBASE pointer
+00B169  2  A8           	TAY
+00B16A  2  88           	DEY
+00B16B  2               	
+00B16B  2               LABEL7:
+00B16B  2  B9 05 04     	LDA DUMP,Y			; Restore zeropage
+00B16E  2  95 90        	STA ZPBASE,X
+00B170  2  88           	DEY
+00B171  2  CA           	DEX
+00B172  2  10 F7        	BPL LABEL7
+00B174  2  60           	RTS
+00B175  2               
+00B175  2               ; *** Start search locked ***
+00B175  2               
+00B175  2               LOCKED:
+00B175  2  AD 03 02     	LDA BRKVEC+1			; Check if break handler switched
+00B178  2  C9 B0        	CMP #>HANDLER
+00B17A  2  F0 18        	BEQ LABEL21
+00B17C  2               
+00B17C  2  8D 01 04     	STA BRKHIGH			; If not, save break handler
+00B17F  2  AD 02 02     	LDA BRKVEC
+00B182  2  8D 00 04     	STA BRKLOW
+00B185  2               
+00B185  2  A9 B0        	LDA #>HANDLER			; Replace break handler
+00B187  2  8D 03 02     	STA BRKVEC+1
+00B18A  2  A9 8C        	LDA #<HANDLER
+00B18C  2  8D 02 02     	STA BRKVEC
+00B18F  2               
+00B18F  2  A5 FD        	LDA SHADOW 			; Set start ROM nr
+00B191  2  8D 02 04     	STA BRKROM
+00B194  2               	
+00B194  2               LABEL21:
+00B194  2  AD 00 A0     	LDA $A000			; Check if legal rom
+00B197  2  C9 40        	CMP #$40
+00B199  2  D0 0A        	BNE TRAP_ERROR
+00B19B  2  AD 01 A0     	LDA $A001
+00B19E  2  C9 BF        	CMP #$BF
+00B1A0  2  D0 03        	BNE TRAP_ERROR
+00B1A2  2  4C 02 A0     	JMP $A002			; If legal, enter ROM
+00B1A5  2               	
+00B1A5  2               TRAP_ERROR:
+00B1A5  2  4C 58 C5     	JMP $C558			; No legal ROM, return
+00B1A8  2               
+00B1A8  2               ; *** Not found in boxes ***
+00B1A8  2               ;     Try own table
+00B1A8  2               ;     If not found in table
+00B1A8  2               ;     Try by original BRKVEC
+00B1A8  2               
+00B1A8  2               NOT_FOUND:
+00B1A8  2  AD 00 04     	LDA BRKLOW			; Reset break handler
+00B1AB  2  8D 02 02     	STA BRKVEC
+00B1AE  2  AD 01 04     	LDA BRKHIGH
+00B1B1  2  8D 03 02     	STA BRKVEC+1
+00B1B4  2               
+00B1B4  2  20 3D B1     	JSR SWITCH_CONTEXT_OUT		; Store zeropage
+00B1B7  2               
+00B1B7  2  AD 02 04     	LDA BRKROM			; Reset ROM nr
+00B1BA  2  85 FD        	STA SHADOW 
+00B1BC  2  8D FF BF     	STA LATCH
+00B1BF  2               
+00B1BF  2  20 59 B1     	JSR SWITCH_CONTEXT_IN		; Restore zeropage
+00B1C2  2  A2 FF        	LDX #$FF
+00B1C4  2               	
+00B1C4  2               NEXT_STATEMENT:
+00B1C4  2  A4 5E        	LDY $5E
+00B1C6  2  B1 05        	LDA (5),Y
+00B1C8  2  C9 2E        	CMP #'.'
+00B1CA  2  D0 03        	BNE LABEL54
+00B1CC  2               	
+00B1CC  2               TRAP_ERROR_94:
+00B1CC  2  4C 58 C5     	JMP $C558
+00B1CF  2               	
+00B1CF  2               LABEL54:
+00B1CF  2  88           	DEY
+00B1D0  2               	
+00B1D0  2               NEXT_CHAR:
+00B1D0  2  E8           	INX
+00B1D1  2  C8           	INY
+00B1D2  2               	
+00B1D2  2               LABEL12:
+00B1D2  2  BD 6F B4     	LDA TABLE,X
+00B1D5  2  C9 FF        	CMP #$FF
+00B1D7  2  F0 F3        	BEQ TRAP_ERROR_94
+00B1D9  2               	
+00B1D9  2               LABEL15:
+00B1D9  2  C9 FE        	CMP #$FE
+00B1DB  2  F0 21        	BEQ LABEL14
+00B1DD  2  D1 05        	CMP (5),Y
+00B1DF  2  F0 EF        	BEQ NEXT_CHAR
+00B1E1  2  CA           	DEX
+00B1E2  2  B1 05        	LDA (5),Y
+00B1E4  2  C9 2E        	CMP #'.'
+00B1E6  2  F0 0D        	BEQ LABEL100
+00B1E8  2               	
+00B1E8  2               LABEL13:
+00B1E8  2  E8           	INX
+00B1E9  2  BD 6F B4     	LDA TABLE,X
+00B1EC  2  C9 FE        	CMP #$FE
+00B1EE  2  D0 F8        	BNE LABEL13
+00B1F0  2  E8           	INX
+00B1F1  2  E8           	INX
+00B1F2  2  4C C4 B1     	JMP NEXT_STATEMENT
+00B1F5  2               	
+00B1F5  2               LABEL100:
+00B1F5  2  E8           	INX
+00B1F6  2  BD 6F B4     	LDA TABLE,X
+00B1F9  2  C9 FE        	CMP #$FE
+00B1FB  2  D0 F8        	BNE LABEL100
+00B1FD  2  C8           	INY
+00B1FE  2               	
+00B1FE  2               LABEL14:
+00B1FE  2  BD 70 B4     	LDA TABLE+1,X
+00B201  2  85 53        	STA $53
+00B203  2  BD 71 B4     	LDA TABLE+2,X
+00B206  2  85 52        	STA $52
+00B208  2  84 03        	STY 3
+00B20A  2  A6 04        	LDX 4
+00B20C  2  6C 52 00     	JMP ($0052)
+00B20F  2               
+00B20F  2  00 00 00 00  	.res $201,0
+00B213  2  00 00 00 00  
+00B217  2  00 00 00 00  
+00B410  2               
+00B410  2               
+00B410  2               ; *** Own commands ***
+00B410  2               
+00B410  2               ROM:
+00B410  2  20 E1 C4     	JSR $C4E1
+00B413  2  20 7F B4     	JSR UPDATE_VECTORS
+00B416  2  A6 04        	LDX 4
+00B418  2  CA           	DEX
+00B419  2  86 04        	STX 4
+00B41B  2  B5 16        	LDA $16,X
+00B41D  2  29 0F        	AND #$F
+00B41F  2  09 40        	ORA #$40
+00B421  2  85 FD         	STA SHADOW 
+00B423  2  8D FF BF      	STA LATCH
+00B426  2               
+00B426  2  AD 00 A0      	LDA $A000
+00B429  2  C9 40        	CMP #$40
+00B42B  2  D0 07        	BNE LABEL9
+00B42D  2  AD 01 A0     	LDA $A001
+00B430  2  C9 BF        	CMP #$BF
+00B432  2  F0 16        	BEQ LABEL20
+00B434  2               	
+00B434  2               LABEL9:
+00B434  2  20 D1 F7     	JSR TEXT
+00B437  2  4E 4F 20 52  	.byte "NO ROM AVAILABLE"
+00B43B  2  4F 4D 20 41  
+00B43F  2  56 41 49 4C  
+00B447  2  0D 0A EA     	.BYTE CR,LF,DELIM
+00B44A  2               	
+00B44A  2               LABEL20:
+00B44A  2  AD 02 04     	LDA BRKROM
+00B44D  2  09 40        	ORA #$40
+00B44F  2  C5 FD        	CMP SHADOW 
+00B451  2  F0 0A        	BEQ LABEL60
+00B453  2               
+00B453  2  A9 D8        	LDA #$D8			; Install original BRK handler
+00B455  2  8D 02 02     	STA BRKVEC
+00B458  2  A9 C9        	LDA #$C9
+00B45A  2  8D 03 02     	STA BRKVEC+1
+00B45D  2               	
+00B45D  2               LABEL60:
+00B45D  2  4C 5B C5     	JMP $C55B
+00B460  2               	
+00B460  2               UNLOCK:
+00B460  2  20 E4 C4     	JSR $C4E4
+00B463  2  A5 FD        	LDA SHADOW 
+00B465  2  29 0F        	AND #$F
+00B467  2  85 FD        	STA SHADOW 
+00B469  2  8D FF BF     	STA LATCH
+00B46C  2  4C 5B C5     	JMP $C55B
+00B46F  2               
+00B46F  2               ; *** Table of commands ***
+00B46F  2               
+00B46F  2               TABLE:
+00B46F  2  52 4F 4D FE  	.byte	"ROM",$FE
+00B473  2  B4 10        	.byte	>ROM,<ROM
+00B475  2  55 4E 4C 4F  	.byte	"UNLOCK",$FE
+00B479  2  43 4B FE     
+00B47C  2  B4 60        	.byte	>UNLOCK,<UNLOCK
+00B47E  2               
+00B47E  2  FF           	.BYTE $FF
+00B47F  2               
+00B47F  2               ; *** Check vectors ***
+00B47F  2               ; If vector point to #Axxx, 
+00B47F  2               ; save it with corresponding ROM nr
+00B47F  2               ; and replace vector
+00B47F  2               
+00B47F  2               UPDATE_VECTORS:
+00B47F  2  08           	PHP
+00B480  2  78           	SEI
+00B481  2               
+00B481  2  A2 00        	LDX #0				; Reset pointers
+00B483  2  A0 00        	LDY #0
+00B485  2               	
+00B485  2               LABEL30:
+00B485  2  BD 01 02     	LDA $201,X			; Check if vector points to #Axxx
+00B488  2  29 F0        	AND #$F0
+00B48A  2  C9 A0        	CMP #$A0
+00B48C  2  D0 25        	BNE LABEL31
+00B48E  2  E0 02        	CPX #2				; Skip BRK vector
+00B490  2  F0 21        	BEQ LABEL31
+00B492  2               
+00B492  2  BD 00 02     	LDA $200,X			; Save vector
+00B495  2  99 07 05     	STA VECTAB+1,Y
+00B498  2  BD 01 02     	LDA $201,X
+00B49B  2  99 06 05     	STA VECTAB,Y
+00B49E  2  A5 FD        	LDA SHADOW 			; Save ROM nr
+00B4A0  2  99 08 05     	STA VECTAB+2,Y
+00B4A3  2               
+00B4A3  2  8A           	TXA				; Replace vector
+00B4A4  2  0A           	ASL A
+00B4A5  2  0A           	ASL A
+00B4A6  2  18           	CLC
+00B4A7  2  69 E2        	ADC #<VECENTRY
+00B4A9  2  9D 00 02     	STA $200,X
+00B4AC  2  A9 B4        	LDA #>VECENTRY
+00B4AE  2  69 00        	ADC #0
+00B4B0  2  9D 01 02      	STA $201,X
+00B4B3  2               	
+00B4B3  2               LABEL31:
+00B4B3  2  E8           	INX				; Point to next vector
+00B4B4  2  E8           	INX
+00B4B5  2               
+00B4B5  2  C8           	INY
+00B4B6  2  C8           	INY
+00B4B7  2  C8           	INY
+00B4B8  2               
+00B4B8  2  E0 1C        	CPX #$1C			; Check end of vectors
+00B4BA  2  D0 C9        	BNE LABEL30
+00B4BC  2               
+00B4BC  2  AD FF 03     	LDA $3FF			; Check if plot vector points at #Axxx (SCREEN ROM)
+00B4BF  2  29 F0         	AND #$F0
+00B4C1  2  C9 A0        	CMP #$A0
+00B4C3  2  D0 1B        	BNE LABEL32
+00B4C5  2               
+00B4C5  2  AD FF 03     	LDA $3FF			; Save plot vector
+00B4C8  2  99 06 05     	STA VECTAB,Y
+00B4CB  2  AD FE 03     	LDA $3FE
+00B4CE  2  99 07 05     	STA VECTAB+1,Y
+00B4D1  2  A9 B5        	LDA #>(VECENTRY+14*8)		; Replace plot vector
+00B4D3  2  8D FF 03     	STA $3FF
+00B4D6  2  A9 52        	LDA #<(VECENTRY+14*8)
+00B4D8  2  8D FE 03     	STA $3FE
+00B4DB  2               
+00B4DB  2  A5 FD        	LDA SHADOW			; Save ROM nr
+00B4DD  2  99 08 05     	STA VECTAB+2,Y
+00B4E0  2               	
+00B4E0  2               LABEL32:
+00B4E0  2  28           	PLP
+00B4E1  2  60           	RTS
+00B4E2  2               
+00B4E2  2               ; *** Entry vector pathways ***
+00B4E2  2               
+00B4E2  2               VECENTRY:
+00B4E2  2  20 69 B5     	JSR ISAVE			; $200, NMI vector
+00B4E5  2  A2 00        	LDX #0
+00B4E7  2  4C 96 B5     	JMP IJOB
+00B4EA  2               
+00B4EA  2  EA           	NOP				; $202, BRK vector
+00B4EB  2  EA           	NOP
+00B4EC  2  EA           	NOP
+00B4ED  2  EA           	NOP
+00B4EE  2  EA           	NOP
+00B4EF  2  4C 58 C5     	JMP $C558
+00B4F2  2               
+00B4F2  2  20 69 B5     	JSR ISAVE			; $204, IRQ vector
+00B4F5  2  A2 06        	LDX #6
+00B4F7  2  4C 96 B5     	JMP IJOB
+00B4FA  2               
+00B4FA  2  20 5A B5     	JSR SAVE			; $206, *COM vector
+00B4FD  2  A2 09        	LDX #9
+00B4FF  2  4C DC B5     	JMP JOB
+00B502  2               
+00B502  2  20 5A B5     	JSR SAVE			; $208, Write vector
+00B505  2  A2 0C        	LDX #12
+00B507  2  4C DC B5     	JMP JOB
+00B50A  2               
+00B50A  2  20 5A B5     	JSR SAVE			; $20A, Read vector
+00B50D  2  A2 0F        	LDX #15
+00B50F  2  4C DC B5     	JMP JOB
+00B512  2               
+00B512  2  20 5A B5     	JSR SAVE			; $20C, Load vector
+00B515  2  A2 12        	LDX #18
+00B517  2  4C DC B5     	JMP JOB
+00B51A  2               
+00B51A  2  20 5A B5     	JSR SAVE			; $20E, Save vector
+00B51D  2  A2 15        	LDX #21
+00B51F  2  4C DC B5     	JMP JOB
+00B522  2               
+00B522  2  20 5A B5     	JSR SAVE			; $210,  vector
+00B525  2  A2 18        	LDX #24
+00B527  2  4C DC B5     	JMP JOB
+00B52A  2               
+00B52A  2  20 5A B5     	JSR SAVE			; $212,  vector
+00B52D  2  A2 1B        	LDX #27
+00B52F  2  4C DC B5     	JMP JOB
+00B532  2               
+00B532  2  20 5A B5     	JSR SAVE			; $214, Get byte vector
+00B535  2  A2 1E        	LDX #30
+00B537  2  4C DC B5     	JMP JOB
+00B53A  2               
+00B53A  2  20 5A B5     	JSR SAVE			; $216, Put byte vector
+00B53D  2  A2 21        	LDX #33
+00B53F  2  4C DC B5     	JMP JOB
+00B542  2               
+00B542  2  20 5A B5     	JSR SAVE			; $218, Print message vector
+00B545  2  A2 24        	LDX #36
+00B547  2  4C DC B5     	JMP JOB
+00B54A  2               
+00B54A  2  20 5A B5     	JSR SAVE			; $21A, Shut vector
+00B54D  2  A2 27        	LDX #39
+00B54F  2  4C DC B5     	JMP JOB
+00B552  2                
+00B552  2  20 5A B5     	JSR SAVE			; $3FF, Plot vector
+00B555  2  A2 2A        	LDX #42
+00B557  2  4C DC B5     	JMP JOB
+00B55A  2               
+00B55A  2               ; *** Save normal processor/registers ***
+00B55A  2               
+00B55A  2               SAVE:
+00B55A  2  08           	PHP				; Save processor status
+00B55B  2  8D 34 05     	STA SUB_ACCU			; Save accu
+00B55E  2  68           	PLA
+00B55F  2  8D 35 05     	STA SUB_STATUS			; Save status
+00B562  2  8E 37 05     	STX SUB_X			; Save X-reg
+00B565  2  8C 36 05     	STY SUB_Y			; Save Y-reg
+00B568  2  60           	RTS
+00B569  2               
+00B569  2               ; *** Save interrupt processor/registers ***
+00B569  2               
+00B569  2               ISAVE:
+00B569  2  08           	PHP				; Save processor status
+00B56A  2  8D 3C 05     	STA INT_ACCU			; Save accu
+00B56D  2  68           	PLA
+00B56E  2  8D 3D 05     	STA INT_STATUS1			; Save status
+00B571  2  8E 3F 05     	STX INT_X			; Save X-reg
+00B574  2  8C 40 05     	STY INT_Y			; Save Y-reg
+00B577  2  60           	RTS
+00B578  2               
+00B578  2               ; *** Reset normal processor/registers ***
+00B578  2               
+00B578  2               LOAD:
+00B578  2  AC 36 05     	LDY SUB_Y			; Reset Y-reg
+00B57B  2  AE 37 05     	LDX SUB_X			; Reset X-reg
+00B57E  2  AD 35 05     	LDA SUB_STATUS			; Reset status
+00B581  2  48           	PHA
+00B582  2  AD 34 05     	LDA SUB_ACCU			; Reset accu
+00B585  2  28           	PLP				; Reset processor status
+00B586  2  60           	RTS
+00B587  2               
+00B587  2               ; *** Reset interrupt processor/registers ***
+00B587  2               
+00B587  2               ILOAD:
+00B587  2  AE 3F 05     	LDX INT_X			; Reset Y-reg
+00B58A  2  AC 40 05     	LDY INT_Y			; Reset X-reg
+00B58D  2  AD 3D 05     	LDA INT_STATUS1			; Reset status
+00B590  2  48           	PHA
+00B591  2  AD 3C 05     	LDA INT_ACCU			; Reset accu
+00B594  2  28           	PLP				; Reset processor status
+00B595  2  60           	RTS
+00B596  2               
+00B596  2               ; *** Interrupt switching pathway ***
+00B596  2               
+00B596  2               IJOB:
+00B596  2  68           	PLA
+00B597  2  8D 3C 05     	STA INT_ACCU
+00B59A  2  68           	PLA
+00B59B  2  48           	PHA
+00B59C  2  8D 3E 05     	STA INT_STATUS2
+00B59F  2               
+00B59F  2  A5 FD        	LDA SHADOW			; Save ROM nr
+00B5A1  2  48           	PHA
+00B5A2  2               
+00B5A2  2  BD 08 05     	LDA VECTAB+2,X			; Reset ROM nr
+00B5A5  2  85 FD        	STA SHADOW 
+00B5A7  2  8D FF BF     	STA LATCH
+00B5AA  2               
+00B5AA  2  BD 06 05     	LDA VECTAB,X			; Reset NMI/IRQ vector
+00B5AD  2  8D 3B 05     	STA INTVECTOR+1
+00B5B0  2  BD 07 05     	LDA VECTAB+1,X
+00B5B3  2  8D 3A 05     	STA INTVECTOR
+00B5B6  2               
+00B5B6  2  A9 B5        	LDA #>IENTRY			; Replace NMI/IRQ vector
+00B5B8  2  48           	PHA
+00B5B9  2  A9 CA        	LDA #<IENTRY
+00B5BB  2  48           	PHA
+00B5BC  2  AD 3E 05     	LDA INT_STATUS2
+00B5BF  2  48           	PHA
+00B5C0  2  AD 3C 05     	LDA INT_ACCU
+00B5C3  2  48           	PHA
+00B5C4  2  20 87 B5     	JSR ILOAD
+00B5C7  2  6C 3A 05     	JMP (INTVECTOR)			; Jump interrupt vector
+00B5CA  2               
+00B5CA  2               
+00B5CA  2               ; *** NMI/IRQ entry ***
+00B5CA  2               
+00B5CA  2               IENTRY:
+00B5CA  2  20 69 B5     	JSR ISAVE			; Save processor/register values
+00B5CD  2  68           	PLA
+00B5CE  2  85 FD        	STA SHADOW 
+00B5D0  2  8D FF BF     	STA LATCH
+00B5D3  2  28           	PLP
+00B5D4  2  AD 3E 05     	LDA INT_STATUS2
+00B5D7  2  48           	PHA
+00B5D8  2  20 87 B5     	JSR ILOAD			; Load processor/register values
+00B5DB  2  40           	RTI				; Return from interrupt
+00B5DC  2               
+00B5DC  2               ; *** Non interrupt switching pathway ***
+00B5DC  2               
+00B5DC  2               JOB:
+00B5DC  2  8E 04 04     	STX VECTOR
+00B5DF  2  8A           	TXA
+00B5E0  2  48           	PHA
+00B5E1  2               
+00B5E1  2  A5 60        	LDA $60				; Save option PCharm
+00B5E3  2  8D 41 05     	STA OPT_PCHARME			;**!!**
+00B5E6  2               	
+00B5E6  2  BD 08 05     	LDA VECTAB+2,X
+00B5E9  2  C5 FD        	CMP SHADOW 
+00B5EB  2  F0 6B        	BEQ SHORT_EXECUTION
+00B5ED  2  E0 15        	CPX #21				; Save file
+00B5EF  2  D0 06        	BNE LABEL40
+00B5F1  2               
+00B5F1  2  20 7F B4     	JSR UPDATE_VECTORS		;**!!**
+00B5F4  2  AE 04 04     	LDX VECTOR
+00B5F7  2               	
+00B5F7  2               LABEL40:
+00B5F7  2  E0 1E        	CPX #30				; Get byte
+00B5F9  2  F0 5D        	BEQ SHORT_EXECUTION
+00B5FB  2  E0 21        	CPX #33				; Put byte
+00B5FD  2  F0 59        	BEQ SHORT_EXECUTION
+00B5FF  2  20 3D B1     	JSR SWITCH_CONTEXT_OUT		; Store zeropage
+00B602  2  AE 04 04     	LDX VECTOR
+00B605  2  A5 FD        	LDA SHADOW 
+00B607  2  48           	PHA
+00B608  2  BD 07 05     	LDA VECTAB+1,X
+00B60B  2  8D 38 05     	STA SUBVECTOR
+00B60E  2  BD 06 05     	LDA VECTAB,X
+00B611  2  8D 39 05     	STA SUBVECTOR+1
+00B614  2  BD 08 05     	LDA VECTAB+2,X
+00B617  2  85 FD        	STA SHADOW 
+00B619  2  8D FF BF     	STA LATCH
+00B61C  2  20 59 B1     	JSR SWITCH_CONTEXT_IN		; Restore zeropage
+00B61F  2  20 78 B5     	JSR LOAD
+00B622  2  20 28 B6     	JSR LB50
+00B625  2  4C 2B B6     	JMP LB51
+00B628  2               	
+00B628  2               LB50:
+00B628  2  6C 38 05     	JMP (SUBVECTOR)
+00B62B  2               	
+00B62B  2               LB51:
+00B62B  2  20 5A B5     	JSR SAVE
+00B62E  2  20 3D B1     	JSR SWITCH_CONTEXT_OUT		; Store zeropage
+00B631  2  68           	PLA
+00B632  2  85 FD        	STA SHADOW 
+00B634  2  8D FF BF     	STA LATCH
+00B637  2  20 59 B1     	JSR SWITCH_CONTEXT_IN		; Restore zeropage
+00B63A  2               
+00B63A  2  AD 41 05     	LDA OPT_PCHARME			;**!!**
+00B63D  2  85 60        	STA $60
+00B63F  2               
+00B63F  2  68           	PLA
+00B640  2  C9 15        	CMP #21				; Save file
+00B642  2  D0 11        	BNE LB10
+00B644  2  AD 13 05     	LDA VECTAB+13
+00B647  2  C9 CE        	CMP #$CE			; ED64 outchar?
+00B649  2  D0 0A        	BNE LB10
+00B64B  2               
+00B64B  2  A9 CE        	LDA #$CE			;**!!**
+00B64D  2  8D 08 02     	STA $208
+00B650  2  A9 AC        	LDA #$AC
+00B652  2  8D 09 02     	STA $209
+00B655  2               	
+00B655  2               LB10:
+00B655  2  4C 78 B5     	JMP LOAD
+00B658  2               
+00B658  2               ; *** No swith pathway ***
+00B658  2               
+00B658  2               SHORT_EXECUTION:
+00B658  2  68           	PLA
+00B659  2  AE 04 04     	LDX VECTOR
+00B65C  2  A5 FD        	LDA SHADOW 
+00B65E  2  48           	PHA
+00B65F  2  BD 08 05     	LDA VECTAB+2,X
+00B662  2  85 FD        	STA SHADOW 
+00B664  2  8D FF BF     	STA LATCH
+00B667  2  BD 06 05     	LDA VECTAB,X
+00B66A  2  8D 39 05     	STA SUBVECTOR+1
+00B66D  2  BD 07 05     	LDA VECTAB+1,X
+00B670  2  8D 38 05     	STA SUBVECTOR
+00B673  2  20 78 B5     	JSR LOAD
+00B676  2  20 7C B6     	JSR LB60
+00B679  2  4C 7F B6     	JMP LB61
+00B67C  2               	
+00B67C  2               LB60:
+00B67C  2  6C 38 05     	JMP (SUBVECTOR)
+00B67F  2               	
+00B67F  2               LB61:
+00B67F  2  20 5A B5     	JSR SAVE
+00B682  2  68           	PLA
+00B683  2  85 FD        	STA SHADOW 
+00B685  2  8D FF BF     	STA LATCH
+00B688  2               
+00B688  2  AD 41 05     	LDA OPT_PCHARME			;**!!**
+00B68B  2  85 60        	STA $60
+00B68D  2  4C 78 B5     	JMP LOAD
+00B690  2               
+00B690  2               ; *** Fake expression caller ***
+00B690  2               
+00B690  2               SWITCH_BACK:
+00B690  2  20 5A B5     	JSR SAVE
+00B693  2  20 3D B1     	JSR SWITCH_CONTEXT_OUT		; Store zeropage
+00B696  2  68           	PLA
+00B697  2  85 FD        	STA SHADOW 
+00B699  2  8D FF BF     	STA LATCH
+00B69C  2  20 59 B1     	JSR SWITCH_CONTEXT_IN		; Restore zeropage
+00B69F  2  A9 B0        	LDA #>HANDLER			; Reinit break handler
+00B6A1  2  8D 03 02     	STA BRKVEC+1
+00B6A4  2  A9 8C        	LDA #<HANDLER
+00B6A6  2  8D 02 02     	STA BRKVEC
+00B6A9  2  4C 78 B5     	JMP LOAD
+00B6AC  2               
+00B6AC  2               
+00B6AC  1               
